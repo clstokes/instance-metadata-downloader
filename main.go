@@ -22,7 +22,7 @@ func main() {
   flags.BoolVar(&google, "google", false, "google")
 
   if err := flags.Parse(os.Args[1:]); err != nil {
-    fmt.Printf("%s\n", err)
+    fmt.Printf("%v\n", err)
     return
   }
 
@@ -33,9 +33,9 @@ func main() {
   }
 
   if amazon {
-    os.Exit(Download(outputPath, nil))
+    os.Exit(download(outputPath, nil))
   } else if google {
-    os.Exit(Download(outputPath, map[string]string{"Metadata-Flavor": "Google"}))
+    os.Exit(download(outputPath, map[string]string{"Metadata-Flavor": "Google"}))
   } else {
     fmt.Printf("No provider specified.\n")
     usage()
@@ -44,23 +44,23 @@ func main() {
   os.Exit(0)
 }
 
-func Download(outputPath string, headers map[string]string) int {
+func download(outputPath string, headers map[string]string) int {
   host, url := "http://169.254.169.254", "/"
   data, err := recursiveGet(host, url, headers, make(map[string]string))
 
   if err != nil {
-    fmt.Fprintf(os.Stderr, "err: [%s]\n", err.Error())
+    fmt.Fprintf(os.Stderr, "err: [%v]\n", err.Error())
     return 1
   }
 
   if err != nil {
-    fmt.Fprintf(os.Stderr, "err: [%s]\n", err.Error())
+    fmt.Fprintf(os.Stderr, "err: [%v]\n", err.Error())
     return 1
   }
 
-  WriteMapToDisk(data, outputPath)
+  writeMapToDisk(data, outputPath)
   if err != nil {
-    fmt.Fprintf(os.Stderr, "err: [%s]\n", err.Error())
+    fmt.Fprintf(os.Stderr, "err: [%v]\n", err.Error())
     return 1
   }
 
@@ -68,9 +68,9 @@ func Download(outputPath string, headers map[string]string) int {
 }
 
 func recursiveGet(host string, url string, headers map[string]string, data map[string]string) (map[string]string, error) {
-  fmt.Printf("Processing [%s]\n", url)
+  fmt.Printf("Processing [%v]\n", url)
 
-  resp, err := GetRawResponse(host+url, headers)
+  resp, err := getRawResponse(host+url, headers)
   if err != nil {
     return data, err
   }
@@ -81,17 +81,21 @@ func recursiveGet(host string, url string, headers map[string]string, data map[s
     return data, err
   }
 
+  if resp.StatusCode != 200 {
+    fmt.Printf("Received [%v] from [%v]. Saving anyway...\n", resp.StatusCode, url)
+  }
+
   finalUrl := resp.Request.URL.Path
 
-  if !strings.HasSuffix(finalUrl, "/") {
-    // process as normal file
-    fmt.Printf("Adding value from [%s]\n", finalUrl)
+  if !strings.HasSuffix(finalUrl, "/") || resp.StatusCode != 200 {
+    // process as normal file or error'd response
+    fmt.Printf("Adding value from [%v]\n", finalUrl)
     data[finalUrl] = string(body)
     return data, nil
   } else {
     // descend into directory listing
     bodyString := string(body)
-    data[finalUrl+"/index.html"] = bodyString
+    data[finalUrl + "index.html"] = bodyString
     for _, val := range strings.Split(bodyString, "\n") {
       if val == "" {
         continue
@@ -105,7 +109,7 @@ func recursiveGet(host string, url string, headers map[string]string, data map[s
   return data, nil
 }
 
-func GetRawResponse(url string, headers map[string]string) (*http.Response, error) {
+func getRawResponse(url string, headers map[string]string) (*http.Response, error) {
   client := &http.Client{
     Timeout: time.Duration(5 * time.Second), // TODO: make configurable?
   }
@@ -122,7 +126,7 @@ func GetRawResponse(url string, headers map[string]string) (*http.Response, erro
   return client.Do(req)
 }
 
-func WriteMapToDisk(data map[string]string, outputPath string) error {
+func writeMapToDisk(data map[string]string, outputPath string) error {
   for key, val := range data {
     var err error
     filePath := outputPath + key
@@ -130,13 +134,13 @@ func WriteMapToDisk(data map[string]string, outputPath string) error {
     dirSplit := strings.Split(filePath, "/")
     dir := strings.Join(dirSplit[0:len(dirSplit)-1], "/")
 
-    fmt.Printf("Making directory: [%s]\n", dir)
+    fmt.Printf("Making directory: [%v]\n", dir)
     err = os.MkdirAll(dir, os.ModePerm)
     if err != nil {
       return err
     }
 
-    fmt.Printf("Writing file: [%s]\n", filePath)
+    fmt.Printf("Writing file: [%v]\n", filePath)
     err = ioutil.WriteFile(filePath, []byte(val), os.ModePerm)
     if err != nil {
       return err
