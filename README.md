@@ -11,7 +11,8 @@ usage: instance-metadata-downloader [options] path
 Recursively downloads all available instance metadata to the given path.
 
 Options:
-  -amazon  Download amazon instance metadata.
+  -amazon  Download Amazon instance metadata.
+  -google  Download Google instance metadata.
 
 $ instance-metadata-downloader -amazon amazon-data
 Processing [/]
@@ -39,6 +40,7 @@ amazon-data/
 
 ```
 amazon
+google
 ```
 
 ### Why not just use `wget --recursive`?
