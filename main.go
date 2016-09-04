@@ -46,7 +46,8 @@ func main() {
 
 func download(outputPath string, headers map[string]string) int {
 	host, url := "http://169.254.169.254", "/"
-	data, err := recursiveGet(host, url, headers, make(map[string]string))
+	data := make(map[string]string)
+	err := recursiveGet(host, url, headers, &data)
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "err: [%v]\n", err.Error())
@@ -58,7 +59,7 @@ func download(outputPath string, headers map[string]string) int {
 		return 1
 	}
 
-	writeMapToDisk(data, outputPath)
+	err = writeMapToDisk(&data, outputPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "err: [%v]\n", err.Error())
 		return 1
@@ -67,18 +68,18 @@ func download(outputPath string, headers map[string]string) int {
 	return 0
 }
 
-func recursiveGet(host string, url string, headers map[string]string, data map[string]string) (map[string]string, error) {
+func recursiveGet(host string, url string, headers map[string]string, data *map[string]string) error {
 	fmt.Printf("Processing [%v]\n", url)
 
 	resp, err := getRawResponse(host+url, headers)
 	if err != nil {
-		return data, err
+		return err
 	}
 
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return data, err
+		return err
 	}
 
 	if resp.StatusCode != 200 {
@@ -91,23 +92,23 @@ func recursiveGet(host string, url string, headers map[string]string, data map[s
 	if !strings.HasSuffix(finalUrl, "/") || resp.StatusCode != 200 {
 		// process as normal file or error'd response
 		fmt.Printf("Adding value from [%v]\n", finalUrl)
-		data[finalUrl] = string(body)
-		return data, nil
+		(*data)[finalUrl] = string(body)
+		return nil
 	} else {
 		// descend into directory listing
 		bodyString := string(body)
-		data[finalUrl+"index.html"] = bodyString
+		(*data)[finalUrl+"index.html"] = bodyString
 		for _, val := range strings.Split(bodyString, "\n") {
 			if val == "" {
 				continue
 			}
-			data, err := recursiveGet(host, finalUrl+val, headers, data)
+			err := recursiveGet(host, finalUrl+val, headers, data)
 			if err != nil {
-				return data, err
+				return err
 			}
 		}
 	}
-	return data, nil
+	return nil
 }
 
 func getRawResponse(url string, headers map[string]string) (*http.Response, error) {
@@ -127,8 +128,8 @@ func getRawResponse(url string, headers map[string]string) (*http.Response, erro
 	return client.Do(req)
 }
 
-func writeMapToDisk(data map[string]string, outputPath string) error {
-	for key, val := range data {
+func writeMapToDisk(data *map[string]string, outputPath string) error {
+	for key, val := range *data {
 		var err error
 		filePath := outputPath + key
 
