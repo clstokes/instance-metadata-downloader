@@ -29,8 +29,14 @@ func main() {
 
 	outputPath := flags.Arg(0)
 	if outputPath == "" {
-		fmt.Printf("No output path specified.\n")
+		fmt.Printf("err: No output path specified.\n")
 		usage()
+	}
+
+	err := os.Mkdir(outputPath, os.ModePerm)
+	if err != nil {
+		fmt.Printf("Output path [%v] already exists. Exiting...\n", outputPath)
+		os.Exit(1)
 	}
 
 	if amazon {
