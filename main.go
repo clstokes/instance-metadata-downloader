@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"time"
 )
@@ -54,11 +55,6 @@ func download(outputPath string, headers map[string]string) int {
 		return 1
 	}
 
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "err: [%v]\n", err.Error())
-		return 1
-	}
-
 	err = writeMapToDisk(&data, outputPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "err: [%v]\n", err.Error())
@@ -69,7 +65,7 @@ func download(outputPath string, headers map[string]string) int {
 }
 
 func recursiveGet(host string, url string, headers map[string]string, data *map[string]string) error {
-	fmt.Printf("Processing [%v]\n", url)
+	fmt.Printf("debug: Processing [%v]\n", url)
 
 	resp, err := getRawResponse(host+url, headers)
 	if err != nil {
@@ -84,14 +80,14 @@ func recursiveGet(host string, url string, headers map[string]string, data *map[
 
 	if resp.StatusCode != 200 {
 		// TODO: Tally these to return error at end of run.
-		fmt.Printf("Received [%v] from [%v]. Saving anyway...\n", resp.StatusCode, url)
+		fmt.Printf("warn: Received [%v] from [%v]. Saving anyway...\n", resp.StatusCode, url)
 	}
 
 	finalUrl := resp.Request.URL.Path
 
 	if !strings.HasSuffix(finalUrl, "/") || resp.StatusCode != 200 {
 		// process as normal file or error'd response
-		fmt.Printf("Adding value from [%v]\n", finalUrl)
+		fmt.Printf("debug: Adding value from [%v]\n", finalUrl)
 		(*data)[finalUrl] = string(body)
 		return nil
 	} else {
@@ -129,23 +125,41 @@ func getRawResponse(url string, headers map[string]string) (*http.Response, erro
 }
 
 func writeMapToDisk(data *map[string]string, outputPath string) error {
-	for key, val := range *data {
+	// create slice from keys for sorting
+	var keys []string
+	for key, _ := range *data {
+		keys = append(keys, key)
+	}
+
+	// sort keys based on depth of path
+	sort.Sort(SortByPaths(keys))
+
+	for _, key := range keys {
+		val := (*data)[key]
 		var err error
 		filePath := outputPath + key
 
 		dirSplit := strings.Split(filePath, "/")
 		dir := strings.Join(dirSplit[0:len(dirSplit)-1], "/")
 
-		fmt.Printf("Making directory: [%v]\n", dir)
+		fmt.Printf("debug: Making directory: [%v]\n", dir)
 		err = os.MkdirAll(dir, os.ModePerm)
 		if err != nil {
-			return err
+			if strings.Contains(err.Error(), "not a directory") {
+				fmt.Fprintf(os.Stderr, "warn: [%v]. Continuing...\n", err.Error())
+			} else {
+				return err
+			}
 		}
 
-		fmt.Printf("Writing file: [%v]\n", filePath)
+		fmt.Printf("debug: Writing file: [%v]\n", filePath)
 		err = ioutil.WriteFile(filePath, []byte(val), os.ModePerm)
 		if err != nil {
-			return err
+			if strings.Contains(err.Error(), "is a directory") {
+				fmt.Fprintf(os.Stderr, "warn: [%v]. Continuing...\n", err.Error())
+			} else {
+				return err
+			}
 		}
 	}
 	return nil
@@ -163,4 +177,16 @@ Options:
 `
 	os.Stderr.WriteString(strings.TrimSpace(helpText) + "\n")
 	os.Exit(1)
+}
+
+type SortByPaths []string
+
+func (s SortByPaths) Len() int {
+	return len(s)
+}
+func (s SortByPaths) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+func (s SortByPaths) Less(i, j int) bool {
+	return strings.Count(s[i], "/") > strings.Count(s[j], "/")
 }
